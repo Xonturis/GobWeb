@@ -1,7 +1,6 @@
 package main
 
 import (
-	"cobweb/network"
 	"fmt"
 	"net"
 	"os"
@@ -27,8 +26,7 @@ func main() {
 					ip := net.ParseIP(ipPort[0])
 					port2, err := strconv.Atoi(ipPort[1])
 					if ip != nil && err == nil {
-						go Test()
-						connectToCobweb(port2, ip, port)
+						LaunchNMSNNJ(port2, ip, port)
 					} else {
 						fmt.Println("Erreur, l'adresse IP n'est pas valide")
 						fmt.Println("Syntaxe :")
@@ -42,7 +40,7 @@ func main() {
 					os.Exit(3)
 				}
 			} else {
-				startServer(port)
+				LaunchNMSNNJ(port, nil, 0)
 			}
 
 		} else {
@@ -58,12 +56,4 @@ func main() {
 		fmt.Println("cobweb <port> [ip:port]")
 		os.Exit(1)
 	}
-}
-
-func startServer(sport int) {
-	network.StartCobweb(sport)
-}
-
-func connectToCobweb(sport int, ip net.IP, localport int) {
-	network.ConnectCobweb(sport, ip, localport)
 }

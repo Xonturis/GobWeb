@@ -14,11 +14,26 @@ import (
 //This piece will be useful to send packets to all connections, accept connections etc...
 //
 
+// Handshake protocol :
+// Case: starting network with A B C connected (A, BC) (B, AC) (C, AB)
+// X wants to WrapConnection to A
+// X --* give me List of connected *--> A
+// A --* List of already connected pairs (BC) *--> X
+// X wants to WrapConnection to B
+// X wants to WrapConnection to C
+// X starts listening
+
+
 var ipConnectableMap = make(map[string]Connectable)
 var packetsChan chan Packet = make(chan Packet)
-var SelfServerAddress string
+var selfServerAddress string = "127.0.0.1"
 var SelfServerPort int
 var listener net.Listener
+
+type packetTypeHandler = func(packet Packet)
+var packetTypeHandlerMap = make(map[string]packetTypeHandler)
+
+var OnReady func()
 
 func GetConnectable(ip string) Connectable {
 	return ipConnectableMap[ip] // Todo handle map err if any ?
@@ -26,13 +41,25 @@ func GetConnectable(ip string) Connectable {
 
 func GetConnectables() *[]Connectable {
 	connectables := make([]Connectable, len(ipConnectableMap))
-	for ip, conn := range ipConnectableMap {
+	for _, conn := range ipConnectableMap {
 		_ = append(connectables, conn)
-		fmt.Println(conn == nil)
-		fmt.Println(ip)
-		fmt.Println(conn.GetConn() == nil)
+		//fmt.Println(conn == nil)
+		//fmt.Println(ip)
+		//fmt.Println(conn.GetConn() == nil)
 	}
 	return &connectables
+}
+
+func GetAllConnectedIPPortString() []string {
+	ips := make([]string, 0, len(ipConnectableMap))
+
+	for _, conn := range ipConnectableMap {
+		remoteAddr := conn.GetConn().RemoteAddr()
+		ipport := remoteAddr.String()
+		ips = append(ips, ipport)
+	}
+
+	return ips
 }
 
 func setConnectable(ip string, connectable Connectable) {
@@ -44,22 +71,22 @@ func accept(port int) {
 	var err error
 	listener, err = net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(port))
 	if err != nil {
-		fmt.Println(err)
+		//fmt.Println(err)
 		return
 	}
 	fmt.Println("Listening to : " + listener.Addr().String())
 
-	SelfServerAddress = "127.0.0.1"
+	selfServerAddress = "127.0.0.1"
 	SelfServerPort = port
 
 	for {
 		conn, err := listener.Accept()
-		fmt.Println("NEW CONNECTION")
+		//fmt.Println("NEW CONNECTION")
 		if err != nil {
-			fmt.Println(err)
+			//fmt.Println(err)
 			os.Exit(6)
 		}
-		ConnectTo(conn)
+		AddToNetwork(conn)
 	}
 }
 
@@ -72,7 +99,11 @@ func SendToAll(packet Packet) {
 	//	//fmt.Println("SENT " + strconv.Itoa(id))
 	//}
 
-	ipConnectableMap["127.0.0.1"].Send(packet)
+
+	connectable := ipConnectableMap["127.0.0.1"]
+	if connectable != nil {
+		connectable.Send(packet)
+	}
 }
 
 func GracefulShutdown() {
@@ -80,8 +111,11 @@ func GracefulShutdown() {
 }
 
 func Handle(packet Packet) {
+	fmt.Println("Handle: ", packet)
+	fmt.Println(GetSelfIPAddress())
 	fmt.Println(packet.PipDest)
-	if packet.PipDest == SelfServerAddress || packet.PipDest == "255.255.255.255" {
+	if packet.PipDest == GetSelfIPAddress() || packet.PipDest == "255.255.255.255" {
+		fmt.Println("good ip")
 		packetsChan <- packet
 	}
 }
@@ -94,22 +128,50 @@ func handlePackets() {
 }
 
 func onReceive(packet Packet) {
-	// Todo implement this
-	fmt.Println(packet)
+	fmt.Println("received")
+	if packetTypeHandlerMap[packet.Ptype] != nil {
+		packetTypeHandlerMap[packet.Ptype](packet)
+		return
+	}else {
+		fmt.Println("Received unhandled packet") // Pit, unhandled packet type
+	}
 }
 
-func ConnectTo(conn net.Conn) {
+func RegisterHandler(packetType string, handler packetTypeHandler) {
+	packetTypeHandlerMap[packetType] = handler
+}
+
+// Connecte a une connexion.
+func AddToNetwork(conn net.Conn) {
 	ip := strings.Split(conn.RemoteAddr().String(), ":")[0]
-	ipConnectableMap[ip] = Connect(conn)
+	ipConnectableMap[ip] = WrapConnection(conn)
 }
 
 func ConnectCobweb(port int, ip net.IP, localport int) {
+	// handshake
 	go handlePackets()
-	ipConnectableMap[ip.String()] = ConnectIP(ip, port)
-	accept(localport)
+	SelfServerPort = localport
+	Handshake(ip, port)
+	// start server
+	//go handlePackets()
+	//ipConnectableMap[ip.String()] = ConnectIP(ip, port)
+	//go accept(localport)
+	//callOnReady()
 }
 
 func StartCobweb(port int) {
+	RegisterHandshakeHandler()
 	go handlePackets()
-	accept(port)
+	go accept(port)
+	callOnReady()
+	fmt.Println("START")
+}
+
+func callOnReady() {
+	if OnReady != nil {
+		OnReady()
+	}
+}
+func GetSelfIPAddress() string {
+	return selfServerAddress
 }

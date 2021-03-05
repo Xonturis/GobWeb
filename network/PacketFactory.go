@@ -1,5 +1,5 @@
 package network
 
-func CreatePacket(ipDest string, data []byte) Packet {
-	return Packet{PipDest: ipDest, PipSrc: SelfServerAddress, Pdata: data}
+func CreatePacket(ipDest string, packetType string, data interface{}) Packet {
+	return Packet{PipDest: ipDest, PipSrc: GetSelfIPAddress(), Ptype: packetType, Pdata: data}
 }
