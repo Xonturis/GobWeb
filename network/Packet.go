@@ -6,9 +6,7 @@ package network
 //
 
 type Packet struct {
-	PipDest string
-	PipSrc  string
-	Ptype   string
-	//Pdata   []byte
-	Pdata interface{}
+	PipSrc string
+	Ptype  string
+	Pdata  interface{}
 }

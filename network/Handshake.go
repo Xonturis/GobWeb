@@ -2,7 +2,6 @@ package network
 
 import (
 	"encoding/gob"
-	"fmt"
 	"net"
 	"strconv"
 	"strings"
@@ -11,16 +10,18 @@ import (
 // Handshake protocol :
 // Case: starting network with A B C connected (A, BC) (B, AC) (C, AB)
 // X wants to connect to A
-// X --* give me list of connected *--> A
+// X --* give me list of connected and I listen to this port *--> A
 // A --* list of already connected pairs (BC) *--> X
 // X wants to connect to B
 // X wants to connect to C
 // X starts listening
 
 type HandshakeData struct {
-	Query bool
-	List  []string
+	Query         int // 0 request list || 1 answer list || 2 hello ! I listen to ...
+	ListeningPort int
+	List          []string
 }
+
 //premiere demande
 // X wants to connect to A
 func Handshake(ip net.IP, port int) {
@@ -36,41 +37,60 @@ func RegisterHandshakeHandler() {
 }
 
 //X --* give me List of connected *--> A
-func askForNetworkPairs(connectable Connectable)  {
-	ip := connectable.GetConn().RemoteAddr().String()
-	ip = strings.Split(ip, ":")[0]
-	packet := CreatePacket(ip, "handshake", HandshakeData{Query: true, List: nil})
+func askForNetworkPairs(connectable Connectable) {
+	packet := CreatePacket("handshake", HandshakeData{Query: 2, ListeningPort: SelfServerPort})
+	connectable.Send(packet)
+
+	packet = CreatePacket("handshake", HandshakeData{Query: 0})
 	connectable.Send(packet)
 }
 
-func handleHandshakePacket(packet Packet)  {
-	fmt.Println("cast")
+func handleHandshakePacket(packet Packet) {
 	data := packet.Pdata.(HandshakeData)
-	fmt.Println("after cast")
 	ipSrc := packet.PipSrc
+	conn := GetConnectable(ipSrc)
 
-	if data.Query {
-		conn := GetConnectable(ipSrc)
+	if data.Query == 0 {
+		packet = CreatePacket("handshake", HandshakeData{
+			Query:         2,
+			ListeningPort: SelfServerPort,
+		})
+		conn.Send(packet)
 
 		// A --* List of already connected pairs (BC) *--> X
-		packet := CreatePacket(ipSrc, "handshake", HandshakeData{
-			Query: false,
-			List:  GetAllConnectedIPPortString(),
-		})
 
+		listOfPairsNotFiltered := GetAllConnectedIPListeningPortString()
+		listOfPairsFiltered := make([]string, 0, len(listOfPairsNotFiltered))
+		dstipport := ipSrc + ":" + strconv.Itoa(conn.GetListeningPort())
+		for _, ipport := range listOfPairsNotFiltered {
+			if ipport != dstipport {
+				listOfPairsFiltered = append(listOfPairsFiltered, ipport)
+			}
+		}
+
+		packet := CreatePacket("handshake", HandshakeData{
+			Query: 1,
+			List:  listOfPairsFiltered,
+		})
 		conn.Send(packet)
-	} else {
+
+	} else if data.Query == 1 {
 
 		for _, ipPort := range data.List {
 			ipPortTab := strings.Split(ipPort, ":")
 			ip := net.ParseIP(ipPortTab[0])
 			port, _ := strconv.Atoi(ipPortTab[1])
 
-			conn := ConnectIP(ip, port)
-			AddToNetwork(conn.GetConn())
+			if GetSelfIPPortAddress() == ipPort {
+				continue
+			}
+			newConn := ConnectIP(ip, port)
+			AddToNetwork(newConn.GetConn())
 		}
 
 		// start listening
 		StartCobweb(SelfServerPort)
+	} else if data.Query == 2 {
+		conn.SetListeningPort(data.ListeningPort)
 	}
 }

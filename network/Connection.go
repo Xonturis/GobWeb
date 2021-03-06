@@ -4,11 +4,11 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/gob"
-	"fmt"
 	"io"
 	"log"
 	"net"
 	"strconv"
+	"strings"
 	"unsafe"
 )
 
@@ -16,8 +16,10 @@ import (
 // Simply represents the connection between the actual client and another client.
 //
 type Connection struct {
-	netConn    net.Conn
-	readWriter *bufio.ReadWriter
+	netConn       net.Conn
+	listeningPort int
+	readWriter    *bufio.ReadWriter
+	ipPortAddress string
 }
 
 type Connectable interface {
@@ -25,10 +27,30 @@ type Connectable interface {
 	Disconnect()
 	Listen()
 	GetConn() net.Conn
+	GetListeningPort() int
+	SetListeningPort(port int)
+	GetIpPortAddress() string
 }
 
 func (c *Connection) GetConn() net.Conn {
 	return c.netConn
+}
+
+func (c *Connection) GetIpPortAddress() string {
+	return c.ipPortAddress
+}
+
+func (c *Connection) GetListeningPort() int {
+	return c.listeningPort
+}
+
+func (c *Connection) SetListeningPort(port int) {
+	c.listeningPort = port
+
+	remoteAddr := c.GetConn().RemoteAddr().String()
+	remoteAddr = strings.Split(remoteAddr, ":")[0]
+	remoteAddr = remoteAddr + ":" + strconv.Itoa(c.GetListeningPort())
+	c.ipPortAddress = remoteAddr
 }
 
 func (c *Connection) GetReadWriter() *bufio.ReadWriter {
@@ -39,7 +61,7 @@ func (c *Connection) GetReadWriter() *bufio.ReadWriter {
 func IntToByteArray(num int64) []byte {
 	size := int(unsafe.Sizeof(num))
 	arr := make([]byte, size)
-	for i := 0 ; i < size ; i++ {
+	for i := 0; i < size; i++ {
 		byt := *(*uint8)(unsafe.Pointer(uintptr(unsafe.Pointer(&num)) + uintptr(i)))
 		arr[i] = byt
 	}
@@ -47,19 +69,19 @@ func IntToByteArray(num int64) []byte {
 }
 
 // Source : https://gist.github.com/ecoshub/5be18dc63ac64f3792693bb94f00662f
-func ByteArrayToInt(arr []byte) int64{
+func ByteArrayToInt(arr []byte) int64 {
 	val := int64(0)
 	size := len(arr)
-	for i := 0 ; i < size ; i++ {
+	for i := 0; i < size; i++ {
 		*(*uint8)(unsafe.Pointer(uintptr(unsafe.Pointer(&val)) + uintptr(i))) = arr[i]
 	}
 	return val
 }
 
 func (c *Connection) Send(packet Packet) {
-	fmt.Println("Send: ", packet)
+	//fmt.Println("[",c.ipPortAddress,"] Send: ", packet)
+	packet.PipSrc = c.GetConn().LocalAddr().String()
 	packetBytes := encodeToBytes(packet)
-	fmt.Println("after encode")
 	size := len(packetBytes) // Size used at reception to handle the packet (buffer business)
 
 	// TODO handle err
@@ -73,12 +95,11 @@ func (c *Connection) Send(packet Packet) {
 	// should stop 'cause we know the size
 
 	_, _ = c.GetReadWriter().Write(IntToByteArray(int64(size))) // size
-	_, _ = c.GetReadWriter().Write([]byte("\n")) // \n
-	_, _ = c.GetReadWriter().Write(packetBytes) // packet
+	_, _ = c.GetReadWriter().Write([]byte("\n"))                // \n
+	_, _ = c.GetReadWriter().Write(packetBytes)                 // packet
 
 	_ = c.GetReadWriter().Writer.Flush()
 
-	fmt.Println("Written " + strconv.Itoa(len(packetBytes)))
 }
 
 func (c *Connection) Disconnect() {
@@ -87,17 +108,12 @@ func (c *Connection) Disconnect() {
 
 // Source: https://gist.github.com/SteveBate/042960baa7a4795c3565
 func encodeToBytes(i interface{}) []byte {
-	fmt.Println("1")
 	buf := bytes.Buffer{}
-	fmt.Println("2")
 	enc := gob.NewEncoder(&buf)
-	fmt.Println("3")
 	err := enc.Encode(i)
-	fmt.Println("4")
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println("5")
 	return buf.Bytes()
 }
 
@@ -113,8 +129,6 @@ func decodePacket(s []byte) Packet {
 }
 
 func (c *Connection) Listen() {
-	//fmt.Println("Start listen")
-
 	// Protocol :
 	// size
 	// ... n bytes
@@ -134,7 +148,6 @@ func (c *Connection) Listen() {
 		basize = basize[:len(basize)-1]
 		size := ByteArrayToInt(basize)
 
-
 		bapacket := make([]byte, size)
 		_, err = io.ReadFull(c.GetReadWriter().Reader, bapacket) // packet
 
@@ -142,11 +155,8 @@ func (c *Connection) Listen() {
 			return
 		}
 
-		//fmt.Println(n)
 		decodedPacket := decodePacket(bapacket)
-		//fmt.Println("DECODED")
 		Handle(decodedPacket)
-		//fmt.Println("HANDLED")
 	}
 }
 
@@ -162,10 +172,11 @@ func ConnectIP(ip net.IP, port int) Connectable {
 }
 
 func WrapConnection(conn net.Conn) Connectable {
-	//fmt.Println("New Connection")
 	connectable := &Connection{
 		conn,
+		0,
 		bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn)),
+		conn.RemoteAddr().String(),
 	}
 	go connectable.Listen()
 	return connectable

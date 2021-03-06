@@ -14,56 +14,35 @@ import (
 //This piece will be useful to send packets to all connections, accept connections etc...
 //
 
-// Handshake protocol :
-// Case: starting network with A B C connected (A, BC) (B, AC) (C, AB)
-// X wants to WrapConnection to A
-// X --* give me List of connected *--> A
-// A --* List of already connected pairs (BC) *--> X
-// X wants to WrapConnection to B
-// X wants to WrapConnection to C
-// X starts listening
-
-
-var ipConnectableMap = make(map[string]Connectable)
-var packetsChan chan Packet = make(chan Packet)
-var selfServerAddress string = "127.0.0.1"
+var allCurrentConnectables = make([]Connectable, 0)
+var packetsChan = make(chan Packet)
+var selfServerAddress = "127.0.0.1"
 var SelfServerPort int
 var listener net.Listener
 
 type packetTypeHandler = func(packet Packet)
+
 var packetTypeHandlerMap = make(map[string]packetTypeHandler)
 
 var OnReady func()
 
 func GetConnectable(ip string) Connectable {
-	return ipConnectableMap[ip] // Todo handle map err if any ?
-}
-
-func GetConnectables() *[]Connectable {
-	connectables := make([]Connectable, len(ipConnectableMap))
-	for _, conn := range ipConnectableMap {
-		_ = append(connectables, conn)
-		//fmt.Println(conn == nil)
-		//fmt.Println(ip)
-		//fmt.Println(conn.GetConn() == nil)
+	for _, conn := range allCurrentConnectables {
+		if strings.Index(conn.GetConn().RemoteAddr().String(), ip) >= 0 {
+			return conn
+		}
 	}
-	return &connectables
+	return nil
 }
 
-func GetAllConnectedIPPortString() []string {
-	ips := make([]string, 0, len(ipConnectableMap))
+func GetAllConnectedIPListeningPortString() []string {
+	ips := make([]string, 0, len(allCurrentConnectables))
 
-	for _, conn := range ipConnectableMap {
-		remoteAddr := conn.GetConn().RemoteAddr()
-		ipport := remoteAddr.String()
-		ips = append(ips, ipport)
+	for _, conn := range allCurrentConnectables {
+		ips = append(ips, conn.GetIpPortAddress())
 	}
 
 	return ips
-}
-
-func setConnectable(ip string, connectable Connectable) {
-	ipConnectableMap[ip] = connectable
 }
 
 func accept(port int) {
@@ -71,7 +50,6 @@ func accept(port int) {
 	var err error
 	listener, err = net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(port))
 	if err != nil {
-		//fmt.Println(err)
 		return
 	}
 	fmt.Println("Listening to : " + listener.Addr().String())
@@ -81,9 +59,8 @@ func accept(port int) {
 
 	for {
 		conn, err := listener.Accept()
-		//fmt.Println("NEW CONNECTION")
+		fmt.Println("New connection: ", conn.RemoteAddr().String())
 		if err != nil {
-			//fmt.Println(err)
 			os.Exit(6)
 		}
 		AddToNetwork(conn)
@@ -91,19 +68,11 @@ func accept(port int) {
 }
 
 func SendToAll(packet Packet) {
-	packet.PipDest = "255.255.255.255"
 
-	//for _, connection := range *GetConnectables() {
-	//	fmt.Println(connection == nil)
-	//	connection.Send(packet)
-	//	//fmt.Println("SENT " + strconv.Itoa(id))
-	//}
-
-
-	connectable := ipConnectableMap["127.0.0.1"]
-	if connectable != nil {
-		connectable.Send(packet)
+	for _, connection := range allCurrentConnectables {
+		connection.Send(packet)
 	}
+
 }
 
 func GracefulShutdown() {
@@ -111,13 +80,8 @@ func GracefulShutdown() {
 }
 
 func Handle(packet Packet) {
-	fmt.Println("Handle: ", packet)
-	fmt.Println(GetSelfIPAddress())
-	fmt.Println(packet.PipDest)
-	if packet.PipDest == GetSelfIPAddress() || packet.PipDest == "255.255.255.255" {
-		fmt.Println("good ip")
-		packetsChan <- packet
-	}
+	//fmt.Println("Handle: ", packet)
+	packetsChan <- packet
 }
 
 func handlePackets() {
@@ -128,11 +92,10 @@ func handlePackets() {
 }
 
 func onReceive(packet Packet) {
-	fmt.Println("received")
 	if packetTypeHandlerMap[packet.Ptype] != nil {
 		packetTypeHandlerMap[packet.Ptype](packet)
 		return
-	}else {
+	} else {
 		fmt.Println("Received unhandled packet") // Pit, unhandled packet type
 	}
 }
@@ -143,8 +106,11 @@ func RegisterHandler(packetType string, handler packetTypeHandler) {
 
 // Connecte a une connexion.
 func AddToNetwork(conn net.Conn) {
-	ip := strings.Split(conn.RemoteAddr().String(), ":")[0]
-	ipConnectableMap[ip] = WrapConnection(conn)
+	split := strings.Split(conn.RemoteAddr().String(), ":")
+	port, _ := strconv.Atoi(split[1])
+	newConnectable := WrapConnection(conn)
+	newConnectable.SetListeningPort(port)
+	allCurrentConnectables = append(allCurrentConnectables, newConnectable)
 }
 
 func ConnectCobweb(port int, ip net.IP, localport int) {
@@ -164,7 +130,6 @@ func StartCobweb(port int) {
 	go handlePackets()
 	go accept(port)
 	callOnReady()
-	fmt.Println("START")
 }
 
 func callOnReady() {
@@ -172,6 +137,6 @@ func callOnReady() {
 		OnReady()
 	}
 }
-func GetSelfIPAddress() string {
-	return selfServerAddress
+func GetSelfIPPortAddress() string {
+	return selfServerAddress + ":" + strconv.Itoa(SelfServerPort)
 }
