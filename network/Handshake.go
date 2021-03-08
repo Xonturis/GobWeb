@@ -43,7 +43,7 @@ func RegisterHandshakeHandler() {
 func askForNetworkPairs(connectable Connectable) {
 	ipPortTab := strings.Split(connectable.GetConn().LocalAddr().String(), ":")
 	ip := ipPortTab[0]
-	port := strconv.Itoa(SelfServerPort)
+	port := strconv.Itoa(GetSelfPortServer())
 	packet := CreatePacket("handshake", HandshakeData{Query: 2, IP: ip+":"+port})
 	connectable.Send(packet)
 

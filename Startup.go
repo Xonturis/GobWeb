@@ -8,9 +8,7 @@ import (
 	"strings"
 )
 
-//
-//Start file.
-//
+//Démarrage de l'application et du réseau.
 func main() {
 	args := os.Args[1:]
 	lenArgs := len(args)

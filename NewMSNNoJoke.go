@@ -8,7 +8,13 @@ import (
 	"os"
 )
 
-func LaunchNMSNNJ(sport int, ip net.IP, localport int) {
+// Méthode permettant de lancer l'application NewMSNNoJoke
+//
+//  net.IP ip         L'ip sur laquelle se connecter.
+//  int    port       Le port de l'ip sur laquelle se connecter.
+//  int    localport  Le port local d'écoute.
+//
+func LaunchNMSNNJ(ip net.IP, port int, localport int) {
 
 	network.RegisterHandler("message", displayReceivedMessage)
 
@@ -17,14 +23,16 @@ func LaunchNMSNNJ(sport int, ip net.IP, localport int) {
 	}
 
 	if ip == nil {
-		go startServer(sport)
+		go startServer(port)
 	} else {
-		go connectToCobweb(sport, ip, localport)
+		go connectToCobweb(ip, port, localport)
 	}
 
 	select {}
 }
 
+// Méthode permettant de taper des messages a envoyer sur le réseau.
+//
 func startScannerOfMessenger() {
 	reader := bufio.NewReader(os.Stdin)
 	for {
@@ -57,6 +65,6 @@ func startServer(sport int) {
 	network.StartCobweb(sport)
 }
 
-func connectToCobweb(sport int, ip net.IP, localport int) {
-	network.ConnectCobweb(sport, ip, localport)
+func connectToCobweb(ip net.IP, port int, localport int) {
+	network.ConnectCobweb(port, ip, localport)
 }

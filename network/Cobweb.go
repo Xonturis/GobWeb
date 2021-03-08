@@ -136,6 +136,12 @@ func callOnReady() {
 		OnReady()
 	}
 }
+
 func GetSelfIPPortAddress() string {
 	return selfServerAddress + ":" + strconv.Itoa(SelfServerPort)
+}
+
+
+func GetSelfPortServer() int {
+	return SelfServerPort
 }
