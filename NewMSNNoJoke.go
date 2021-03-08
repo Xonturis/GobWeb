@@ -8,11 +8,15 @@ import (
 	"os"
 )
 
+//
+// Ce programme nous a servi de programme d'essai pour débuger et tester en situation réelle le réseau.
+//
+
 // Méthode permettant de lancer l'application NewMSNNoJoke
 //
-//  net.IP ip         L'ip sur laquelle se connecter.
-//  int    port       Le port de l'ip sur laquelle se connecter.
-//  int    localport  Le port local d'écoute.
+//  net.IP  ip         L'ip sur laquelle se connecter.
+//  int     port       Le port de l'ip sur laquelle se connecter.
+//  int     localport  Le port local d'écoute.
 //
 func LaunchNMSNNJ(ip net.IP, port int, localport int) {
 
@@ -23,15 +27,15 @@ func LaunchNMSNNJ(ip net.IP, port int, localport int) {
 	}
 
 	if ip == nil {
-		go startServer(port)
+		go network.StartCobweb(port)
 	} else {
-		go connectToCobweb(ip, port, localport)
+		go network.ConnectCobweb(port, ip, localport)
 	}
 
-	select {}
+	select {} // Infinite wait for something (love maybe ...)
 }
 
-// Méthode permettant de taper des messages a envoyer sur le réseau.
+// Fonction permettant de taper des messages a envoyer sur le réseau.
 //
 func startScannerOfMessenger() {
 	reader := bufio.NewReader(os.Stdin)
@@ -51,20 +55,16 @@ func startScannerOfMessenger() {
 	}
 }
 
+// Méthode écrivant sur la console toutes les connexions du pair.
+//
 func listAllConnections() {
 	for _, ipport := range network.GetAllConnectedIPListeningPortString() {
 		fmt.Println(ipport)
 	}
 }
 
+// Méthode qui affiche le message reçu.
+//
 func displayReceivedMessage(packet network.Packet) {
-	fmt.Println("[", packet.Conn.LocalAddr, "] ", packet.Pdata)
-}
-
-func startServer(sport int) {
-	network.StartCobweb(sport)
-}
-
-func connectToCobweb(ip net.IP, port int, localport int) {
-	network.ConnectCobweb(port, ip, localport)
+	fmt.Println("[", packet.GetConnection().GetConn().RemoteAddr().String(), "] ", packet.Pdata)
 }

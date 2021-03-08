@@ -24,7 +24,7 @@ func main() {
 					ip := net.ParseIP(ipPort[0])
 					port2, err := strconv.Atoi(ipPort[1])
 					if ip != nil && err == nil {
-						LaunchNMSNNJ(port2, ip, port)
+						LaunchNMSNNJ(ip, port2, port)
 					} else {
 						fmt.Println("Erreur, l'adresse IP n'est pas valide")
 						fmt.Println("Syntaxe :")
@@ -38,7 +38,7 @@ func main() {
 					os.Exit(3)
 				}
 			} else {
-				LaunchNMSNNJ(port, nil, 0)
+				LaunchNMSNNJ(nil, port, 0)
 			}
 
 		} else {

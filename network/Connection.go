@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/gob"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -12,20 +13,23 @@ import (
 	"unsafe"
 )
 
+// Représente une connexion entre un client et un autre client.
 //
-// Simply represents the connection between the actual client and another client.
+// net.Conn            netConn        La connexion
+// int                 listeningPort  Le port d'écoute
+// *bufio.ReadWritter  readWriter     Permet de lire et écrire dans le buffer de la connexion
+// string              ipPortAddress  Le port
+// string              LocalAddr      L'ip local
 //
 type Connection struct {
-	netConn       net.Conn
-	listeningPort int
-	readWriter    *bufio.ReadWriter
-	ipPortAddress string
-	LocalAddr     string
+	netConn        net.Conn
+	listeningPort  int
+	readWriter     *bufio.ReadWriter
+	ipPortAddress  string
 }
 
 type Connectable interface {
 	Send(Packet)
-	Disconnect()
 	Listen()
 	GetConn() net.Conn
 	GetListeningPort() int
@@ -34,22 +38,27 @@ type Connectable interface {
 	GetIpPortAddress() string
 }
 
+// Fonction permettant de récupérer la connexion.
 func (c *Connection) GetConn() net.Conn {
 	return c.netConn
 }
 
+// Fonction permettant de récupérer l'ip et le port.
 func (c *Connection) GetIpPortAddress() string {
 	return c.ipPortAddress
 }
 
+// Fonction permettant de changer l'ip et le port.
 func (c *Connection) SetIpPortAddress(ipport string)  {
 	c.ipPortAddress = ipport
 }
 
+// Fonction permettant de récupérer le port d'écoute.
 func (c *Connection) GetListeningPort() int {
 	return c.listeningPort
 }
 
+// Fonction permettant de changer le port d'écoute.
 func (c *Connection) SetListeningPort(port int) {
 	c.listeningPort = port
 
@@ -59,10 +68,13 @@ func (c *Connection) SetListeningPort(port int) {
 	c.ipPortAddress = remoteAddr
 }
 
+// Fonction permettant de récupérer readWriter.
 func (c *Connection) GetReadWriter() *bufio.ReadWriter {
 	return c.readWriter
 }
 
+// Fonction convertissant un entier en tableau de byte.
+//
 // Source : https://gist.github.com/ecoshub/5be18dc63ac64f3792693bb94f00662f
 func IntToByteArray(num int64) []byte {
 	size := int(unsafe.Sizeof(num))
@@ -74,6 +86,8 @@ func IntToByteArray(num int64) []byte {
 	return arr
 }
 
+// Fonction convertissant un tableau de byte en entier.
+//
 // Source : https://gist.github.com/ecoshub/5be18dc63ac64f3792693bb94f00662f
 func ByteArrayToInt(arr []byte) int64 {
 	val := int64(0)
@@ -84,12 +98,10 @@ func ByteArrayToInt(arr []byte) int64 {
 	return val
 }
 
+// Fonction permettant d'envoyer un packet sur la connexion.
 func (c *Connection) Send(packet Packet) {
-	packet.PipSrc = c.GetConn().LocalAddr().String()
 	packetBytes := encodeToBytes(packet)
 	size := len(packetBytes) // Size used at reception to handle the packet (buffer business)
-
-	// TODO handle err
 
 	// Protocol :
 	// size
@@ -99,51 +111,74 @@ func (c *Connection) Send(packet Packet) {
 	// ... size bytes
 	// should stop 'cause we know the size
 
-	_, _ = c.GetReadWriter().Write(IntToByteArray(int64(size))) // size
-	_, _ = c.GetReadWriter().Write([]byte("\n"))                // \n
-	_, _ = c.GetReadWriter().Write(packetBytes)                 // packet
+	var err error
+	_, err = c.GetReadWriter().Write(IntToByteArray(int64(size))) // size
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	_, err = c.GetReadWriter().Write([]byte("\n"))                // \n
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	_, err = c.GetReadWriter().Write(packetBytes)                 // packet
+	if err != nil {
+		log.Println(err)
+		return
+	}
 
-	_ = c.GetReadWriter().Writer.Flush()
+	err = c.GetReadWriter().Writer.Flush()
+	if err != nil {
+		log.Println(err)
+		return
+	}
 
+	log.Println("|-->", packet)
 }
 
-func (c *Connection) Disconnect() {
-	_ = c.GetConn().Close()
-}
-
+// Fonction encodant n'importe quoi en un tableau de byte.
+//
 // Source: https://gist.github.com/SteveBate/042960baa7a4795c3565
 func encodeToBytes(i interface{}) []byte {
 	buf := bytes.Buffer{}
 	enc := gob.NewEncoder(&buf)
 	err := enc.Encode(i)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println("Error with gob, try adding `gob.Register(YOUR_INTERFACE_HERE{})` before handling packets")
+		log.Println(err)
 	}
 	return buf.Bytes()
 }
 
+// Fonction décodant un tableau de byte en un packet
+//
 // Source: https://gist.github.com/SteveBate/042960baa7a4795c3565
 func decodePacket(s []byte) Packet {
 	p := Packet{}
 	dec := gob.NewDecoder(bytes.NewReader(s))
 	err := dec.Decode(&p)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println("Error with gob, try adding `gob.Register(YOUR_INTERFACE_HERE{})` before handling packets")
+		log.Println(err)
 	}
 	return p
 }
 
+// Fonction écoutant sur le réseau pour savoir si un packet est reçu.
 func (c *Connection) Listen() {
-	// Protocol :
-	// size
+	// Problème original :
+	//  Comment savoir la taille du message tout en évitant d'imposer des limitations comme une taille maximum
+	//  ou un caractère interdit, etc etc
+	//  donc on s'est inspiré du protocole IP
+	// Protocole :
+	// taille
 	// ... n bytes
 	// \n
-	// packet
-	// ... size bytes
-	// should stop 'cause we know the size
+	// packet <-- contenu de l'utilisateur, pas de délimiteur puisqu'on connait à l'avance la taille
+	// ... taille bytes
 
 	for {
-		//var buffer bytes.Buffer
 		basize, err := c.GetReadWriter().Reader.ReadBytes('\n') // size
 
 		if err != nil {
@@ -157,33 +192,39 @@ func (c *Connection) Listen() {
 		_, err = io.ReadFull(c.GetReadWriter().Reader, bapacket) // packet
 
 		if err != nil {
+			log.Println(err)
 			return
 		}
 
 		decodedPacket := decodePacket(bapacket)
-		decodedPacket.Conn = *c
+		decodedPacket.SetConnection(c)
 		Handle(decodedPacket)
 	}
 }
 
 // Établie un lien TCP et return un Connectable.
-func ConnectIP(ip net.IP, port int) Connectable {
+func ConnectIP(ip net.IP, port int) *Connection {
 	conn, err := net.Dial("tcp", ip.String()+":"+strconv.Itoa(port))
 
 	if err != nil {
+		log.Println(err)
 		return nil
 	}
 
 	return WrapConnection(conn)
 }
 
-func WrapConnection(conn net.Conn) Connectable {
-	connectable := &Connection{
+// Fonction wrappant la net.Conn avec des données utiles pour le reste du programme (readWriter, ip et port)
+// dans un Connection
+//
+//  net.Conn conn	la connection a wrapper
+func WrapConnection(conn net.Conn) *Connection {
+	var connectable *Connection
+	connectable = &Connection{
 		conn,
 		0,
 		bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn)),
 		conn.RemoteAddr().String(),
-		conn.LocalAddr().String(),
 	}
 	go connectable.Listen()
 	return connectable

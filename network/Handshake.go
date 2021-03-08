@@ -2,6 +2,7 @@ package network
 
 import (
 	"encoding/gob"
+	"log"
 	"net"
 	"strconv"
 	"strings"
@@ -9,15 +10,23 @@ import (
 
 // Handshake protocol :
 // Case: starting network with A B C connected (A, BC) (B, AC) (C, AB)
+//
 // X wants to connect to A
-// X --* give me list of connected and I listen to this port *--> A
+// X --* I listen to this ip:port and give me list of connected *--> A
 // A --* list of already connected pairs (BC) *--> X
 // X wants to connect to B
 // X wants to connect to C
 // X starts listening
 
+
+// Un packet est un élément d'information abstrait qui peut voyager a travers le réseau.
+//
+//  int       Query  0 request list || 1 answer list || 2 hello ! I listen to ...
+//  string    IP     Le couple ip:port d'écoute de l'émetteur si la Query est 2
+//  []string  List   Une liste de connexion si la Query est 1
+//
 type HandshakeData struct {
-	Query         int // 0 request list || 1 answer list || 2 hello ! I listen to ...
+	Query         int
 	IP			  string
 	List          []string
 }
@@ -34,67 +43,88 @@ func Handshake(ip net.IP, port int) {
 	askForNetworkPairs(conn)
 }
 
+// Méthode permettant d'ajouter un handler pour les packets de type "handshake".
+//
+// Voir handleHandshakePacket(Packet)
 func RegisterHandshakeHandler() {
 	gob.Register(HandshakeData{})
 	RegisterHandler("handshake", handleHandshakePacket)
 }
 
-//X --* give me List of connected *--> A
+// X --* I listen to this ip:port and give me list of connected *--> A
 func askForNetworkPairs(connectable Connectable) {
 	ipPortTab := strings.Split(connectable.GetConn().LocalAddr().String(), ":")
 	ip := ipPortTab[0]
 	port := strconv.Itoa(GetSelfPortServer())
-	packet := CreatePacket("handshake", HandshakeData{Query: 2, IP: ip+":"+port})
+	packet := CreatePacket("handshake", HandshakeData{Query: 0, IP: ip+":"+port})
 	connectable.Send(packet)
 
-	packet = CreatePacket("handshake", HandshakeData{Query: 0})
+	packet = CreatePacket("handshake", HandshakeData{Query: 1})
 	connectable.Send(packet)
 }
 
+// En suivant le protocole, cette fonction va traiter les packets concernant le handshake
 func handleHandshakePacket(packet Packet) {
 	data := packet.Pdata.(HandshakeData)
-	conn := packet.Conn
+	conn := packet.GetConnection()
 
-	if data.Query == 0 {
-		ipPortTab := strings.Split(conn.GetConn().LocalAddr().String(), ":")
-		ip := ipPortTab[0]
-		port := strconv.Itoa(SelfServerPort)
-		packet = CreatePacket("handshake", HandshakeData{
-			Query:         	2,
-			IP: ip+":"+port,
-		})
-		conn.Send(packet)
+	ipPortTab := strings.Split(conn.GetConn().LocalAddr().String(), ":")
+	ip := ipPortTab[0]
+	port := strconv.Itoa(GetSelfPortServer())
 
-		// A --* List of already connected pairs (BC) *--> X
+	// Création du packet hello contenant simplement où se connecter à ce pair (pour les futurs entrants)
+	helloPacket := CreatePacket("handshake", HandshakeData{
+		Query: 0,
+		IP: ip+":"+port,
+	})
 
-		listOfPairsNotFiltered := GetAllConnectedIPListeningPortString()
-		packet := CreatePacket("handshake", HandshakeData{
-			Query: 1,
-			List:  listOfPairsNotFiltered,
-		})
-		conn.Send(packet)
+	switch data.Query {
+		case 0: // Receives ip:port listening
+			conn.SetIpPortAddress(data.IP)
+			return
+		case 1: // Receives handshake query for list and ip:port listening
+			handleGiveMeListPacket(conn, helloPacket)
+			return
+		case 2: // Receives response of 2 (list of pairs)
+			handleHereIsListPacket(helloPacket, data)
+			return
+	}
+}
 
-	} else if data.Query == 1 {
+func handleGiveMeListPacket(conn *Connection, helloPacket Packet) {
+	conn.Send(helloPacket)
 
-		for _, ipPort := range data.List {
-			ipPortTab := strings.Split(ipPort, ":")
-			ip := net.ParseIP(ipPortTab[0])
-			port, _ := strconv.Atoi(ipPortTab[1])
+	listOfPairs := GetAllConnectedIPListeningPortString()
+	packet := CreatePacket("handshake", HandshakeData{
+		Query: 2,
+		List:  listOfPairs,
+	})
 
-			if GetSelfIPPortAddress() == ipPort {
-				continue
-			}
+	// A --* list of already connected pairs (BC) *--> X
+	conn.Send(packet)
+}
 
-			newConn := ConnectIP(ip, port)
-			if newConn == nil {
-				continue
-			}
-			AddToNetwork(newConn.GetConn())
+func handleHereIsListPacket(helloPacket Packet, data HandshakeData) {
+	for _, ipPort := range data.List {
+		ipPortTab := strings.Split(ipPort, ":")
+		ip := net.ParseIP(ipPortTab[0])
+		port, _ := strconv.Atoi(ipPortTab[1])
+
+		if GetSelfIPPortAddress() == ipPort { // Avoids connecting to itself
+			continue
 		}
 
-		// start listening
-		StartCobweb(SelfServerPort)
-	} else if data.Query == 2 {
-		conn.SetIpPortAddress(data.IP)
+		newConn := ConnectIP(ip, port)
+		if newConn == nil {
+			// Because disconnection is not handled as asked in the subject, maybe, the pair we want to connect to
+			// gave us a list of pairs that are disconnected but not removed (not handled)
+			continue
+		}
+		log.Println("Sent hello to ", ipPort)
+		newConn.Send(helloPacket)
+		AddToNetwork(newConn.GetConn())
 	}
+
+	// start listening
+	StartCobweb(GetSelfPortServer())
 }
