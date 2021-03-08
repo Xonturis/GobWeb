@@ -27,7 +27,9 @@ var packetTypeHandlerMap = make(map[string]packetTypeHandler)
 var OnReady func()
 
 func GetConnectable(ip string) Connectable {
+	fmt.Println("All connectables: ")
 	for _, conn := range allCurrentConnectables {
+		fmt.Println(conn.GetConn().RemoteAddr().String())
 		if strings.Index(conn.GetConn().RemoteAddr().String(), ip) >= 0 {
 			return conn
 		}

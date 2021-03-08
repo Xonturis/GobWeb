@@ -2,6 +2,7 @@ package network
 
 import (
 	"encoding/gob"
+	"fmt"
 	"net"
 	"strconv"
 	"strings"
@@ -27,6 +28,9 @@ type HandshakeData struct {
 func Handshake(ip net.IP, port int) {
 	RegisterHandshakeHandler()
 	conn := ConnectIP(ip, port)
+	if conn == nil {
+		return
+	}
 	AddToNetwork(conn.GetConn())
 	askForNetworkPairs(conn)
 }
@@ -48,29 +52,24 @@ func askForNetworkPairs(connectable Connectable) {
 func handleHandshakePacket(packet Packet) {
 	data := packet.Pdata.(HandshakeData)
 	ipSrc := packet.PipSrc
-	conn := GetConnectable(ipSrc)
+	conn := packet.Conn
+
+	fmt.Println("Packet: ", packet)
+	fmt.Println("Ipsrc: ",ipSrc)
 
 	if data.Query == 0 {
 		packet = CreatePacket("handshake", HandshakeData{
-			Query:         2,
-			ListeningPort: SelfServerPort,
+			Query:         	2,
+			ListeningPort: 	SelfServerPort,
 		})
 		conn.Send(packet)
 
 		// A --* List of already connected pairs (BC) *--> X
 
 		listOfPairsNotFiltered := GetAllConnectedIPListeningPortString()
-		listOfPairsFiltered := make([]string, 0, len(listOfPairsNotFiltered))
-		dstipport := ipSrc + ":" + strconv.Itoa(conn.GetListeningPort())
-		for _, ipport := range listOfPairsNotFiltered {
-			if ipport != dstipport {
-				listOfPairsFiltered = append(listOfPairsFiltered, ipport)
-			}
-		}
-
 		packet := CreatePacket("handshake", HandshakeData{
 			Query: 1,
-			List:  listOfPairsFiltered,
+			List:  listOfPairsNotFiltered,
 		})
 		conn.Send(packet)
 
@@ -81,10 +80,15 @@ func handleHandshakePacket(packet Packet) {
 			ip := net.ParseIP(ipPortTab[0])
 			port, _ := strconv.Atoi(ipPortTab[1])
 
+			fmt.Println("SelfIPPORT: ", GetSelfIPPortAddress())
 			if GetSelfIPPortAddress() == ipPort {
 				continue
 			}
+
 			newConn := ConnectIP(ip, port)
+			if newConn == nil {
+				continue
+			}
 			AddToNetwork(newConn.GetConn())
 		}
 

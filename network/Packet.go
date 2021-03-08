@@ -6,6 +6,7 @@ package network
 //
 
 type Packet struct {
+	Conn Connection
 	PipSrc string
 	Ptype  string
 	Pdata  interface{}

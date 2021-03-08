@@ -8,12 +8,6 @@ import (
 	"os"
 )
 
-//func Test() {
-//	time.Sleep(2 * time.Second)
-//	network.SendToAll(network.CreatePacket("127.0.0.1", []byte("BONJOUR!")))
-//	network.SendToAll(network.CreatePacket("127.0.0.1", []byte("YES!")))
-//}
-
 func LaunchNMSNNJ(sport int, ip net.IP, localport int) {
 
 	network.RegisterHandler("message", displayReceivedMessage)

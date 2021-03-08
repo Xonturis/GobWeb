@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/gob"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -20,6 +21,7 @@ type Connection struct {
 	listeningPort int
 	readWriter    *bufio.ReadWriter
 	ipPortAddress string
+	LocalAddr     string
 }
 
 type Connectable interface {
@@ -79,7 +81,7 @@ func ByteArrayToInt(arr []byte) int64 {
 }
 
 func (c *Connection) Send(packet Packet) {
-	//fmt.Println("[",c.ipPortAddress,"] Send: ", packet)
+	fmt.Println("[",c.LocalAddr,"]")
 	packet.PipSrc = c.GetConn().LocalAddr().String()
 	packetBytes := encodeToBytes(packet)
 	size := len(packetBytes) // Size used at reception to handle the packet (buffer business)
@@ -156,6 +158,7 @@ func (c *Connection) Listen() {
 		}
 
 		decodedPacket := decodePacket(bapacket)
+		decodedPacket.Conn = *c
 		Handle(decodedPacket)
 	}
 }
@@ -165,7 +168,7 @@ func ConnectIP(ip net.IP, port int) Connectable {
 	conn, err := net.Dial("tcp", ip.String()+":"+strconv.Itoa(port))
 
 	if err != nil {
-		panic(err)
+		return nil
 	}
 
 	return WrapConnection(conn)
@@ -177,6 +180,7 @@ func WrapConnection(conn net.Conn) Connectable {
 		0,
 		bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn)),
 		conn.RemoteAddr().String(),
+		conn.LocalAddr().String(),
 	}
 	go connectable.Listen()
 	return connectable
