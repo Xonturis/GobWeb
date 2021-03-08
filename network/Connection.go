@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/gob"
-	"fmt"
 	"io"
 	"log"
 	"net"
@@ -31,6 +30,7 @@ type Connectable interface {
 	GetConn() net.Conn
 	GetListeningPort() int
 	SetListeningPort(port int)
+	SetIpPortAddress(ipport string)
 	GetIpPortAddress() string
 }
 
@@ -40,6 +40,10 @@ func (c *Connection) GetConn() net.Conn {
 
 func (c *Connection) GetIpPortAddress() string {
 	return c.ipPortAddress
+}
+
+func (c *Connection) SetIpPortAddress(ipport string)  {
+	c.ipPortAddress = ipport
 }
 
 func (c *Connection) GetListeningPort() int {
@@ -81,7 +85,6 @@ func ByteArrayToInt(arr []byte) int64 {
 }
 
 func (c *Connection) Send(packet Packet) {
-	fmt.Println("[",c.LocalAddr,"]")
 	packet.PipSrc = c.GetConn().LocalAddr().String()
 	packetBytes := encodeToBytes(packet)
 	size := len(packetBytes) // Size used at reception to handle the packet (buffer business)

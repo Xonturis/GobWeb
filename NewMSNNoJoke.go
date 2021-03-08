@@ -29,13 +29,28 @@ func startScannerOfMessenger() {
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Print("> ")
-		text, _ := reader.ReadString('\n')
+		text, err := reader.ReadString('\n')
+
+		if err != nil {
+			continue
+		}
+
+		if text == "list\n" {
+			listAllConnections()
+			continue
+		}
 		network.SendToAll(network.CreatePacket("message", text))
 	}
 }
 
+func listAllConnections() {
+	for _, ipport := range network.GetAllConnectedIPListeningPortString() {
+		fmt.Println(ipport)
+	}
+}
+
 func displayReceivedMessage(packet network.Packet) {
-	fmt.Println("[", packet.PipSrc, "] ", packet.Pdata)
+	fmt.Println("[", packet.Conn.LocalAddr, "] ", packet.Pdata)
 }
 
 func startServer(sport int) {

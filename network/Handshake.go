@@ -2,7 +2,6 @@ package network
 
 import (
 	"encoding/gob"
-	"fmt"
 	"net"
 	"strconv"
 	"strings"
@@ -19,7 +18,7 @@ import (
 
 type HandshakeData struct {
 	Query         int // 0 request list || 1 answer list || 2 hello ! I listen to ...
-	ListeningPort int
+	IP			  string
 	List          []string
 }
 
@@ -42,7 +41,10 @@ func RegisterHandshakeHandler() {
 
 //X --* give me List of connected *--> A
 func askForNetworkPairs(connectable Connectable) {
-	packet := CreatePacket("handshake", HandshakeData{Query: 2, ListeningPort: SelfServerPort})
+	ipPortTab := strings.Split(connectable.GetConn().LocalAddr().String(), ":")
+	ip := ipPortTab[0]
+	port := strconv.Itoa(SelfServerPort)
+	packet := CreatePacket("handshake", HandshakeData{Query: 2, IP: ip+":"+port})
 	connectable.Send(packet)
 
 	packet = CreatePacket("handshake", HandshakeData{Query: 0})
@@ -51,16 +53,15 @@ func askForNetworkPairs(connectable Connectable) {
 
 func handleHandshakePacket(packet Packet) {
 	data := packet.Pdata.(HandshakeData)
-	ipSrc := packet.PipSrc
 	conn := packet.Conn
 
-	fmt.Println("Packet: ", packet)
-	fmt.Println("Ipsrc: ",ipSrc)
-
 	if data.Query == 0 {
+		ipPortTab := strings.Split(conn.GetConn().LocalAddr().String(), ":")
+		ip := ipPortTab[0]
+		port := strconv.Itoa(SelfServerPort)
 		packet = CreatePacket("handshake", HandshakeData{
 			Query:         	2,
-			ListeningPort: 	SelfServerPort,
+			IP: ip+":"+port,
 		})
 		conn.Send(packet)
 
@@ -80,7 +81,6 @@ func handleHandshakePacket(packet Packet) {
 			ip := net.ParseIP(ipPortTab[0])
 			port, _ := strconv.Atoi(ipPortTab[1])
 
-			fmt.Println("SelfIPPORT: ", GetSelfIPPortAddress())
 			if GetSelfIPPortAddress() == ipPort {
 				continue
 			}
@@ -95,6 +95,6 @@ func handleHandshakePacket(packet Packet) {
 		// start listening
 		StartCobweb(SelfServerPort)
 	} else if data.Query == 2 {
-		conn.SetListeningPort(data.ListeningPort)
+		conn.SetIpPortAddress(data.IP)
 	}
 }
