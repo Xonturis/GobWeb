@@ -25,8 +25,6 @@ func LaunchNMSNNJ(ip net.IP, port int, localport int) {
 	network.RegisterHandler("message", displayReceivedMessage)
 	network.RegisterHandler("private-message", displayReceivedPrivateMessage)
 
-	network.SetLogLevel(network.NONE)
-
 	network.OnReady = func() {
 		go startScannerOfMessenger()
 	}
@@ -38,6 +36,8 @@ func LaunchNMSNNJ(ip net.IP, port int, localport int) {
 	}
 
 	fmt.Println("Starting the New MSN, No Joke !")
+	fmt.Println("[IP:PORT] -> MESSAGE is for broadcast messages")
+	fmt.Println("(IP:PORT) -> MESSAGE is for private messages")
 
 	select {} // Infinite wait for something (love maybe ...)
 }
@@ -46,6 +46,7 @@ func LaunchNMSNNJ(ip net.IP, port int, localport int) {
 //
 func startScannerOfMessenger() {
 	var sendReg = regexp.MustCompile(`^send ((?:\d{1,3}\.){3}\d{1,3}:\d{4,5}) (.*)`)
+	var loglevelReg = regexp.MustCompile(`^set loglevel (INFO|WARNING|ERROR|NONE)`)
 
 	reader := bufio.NewReader(os.Stdin)
 	for {
@@ -56,7 +57,14 @@ func startScannerOfMessenger() {
 			continue
 		}
 
-		if text == "list\n" {
+		if text == "commands\n" {
+			fmt.Println("Help :")
+			fmt.Println("\tcommands: Displays this message")
+			fmt.Println("\tlist: Lists all connections")
+			fmt.Println("\tsend <IP:PORT> <MESSAGE>: Sends a private message to IP:PORT connection")
+			fmt.Println("\tset loglevel <INFO|WARNING|ERROR|NONE>: Sets the loglevel (default: INFO)")
+			continue
+		} else if text == "list\n" {
 			listAllConnections()
 			continue
 		} else if sendReg.MatchString(text) {
@@ -74,12 +82,38 @@ func startScannerOfMessenger() {
 
 			if err != nil {
 				log.Println("Veuillez vérifier le couple ip:port que vous avez saisi, aucune entrée trouvée")
-				return
+				continue
 			}
 
 			connection.Send(network.CreatePacket("private-message", message))
-			return
+			continue
+		} else if loglevelReg.MatchString(text) {
+			params := loglevelReg.FindStringSubmatch(text)
+
+			loglevel := params[1]
+
+			var loglevelInt int
+			switch loglevel {
+			case "INFO":
+				loglevelInt = network.INFO
+				break
+			case "WARNING":
+				loglevelInt = network.WARNING
+				break
+			case "ERROR":
+				loglevelInt = network.ERROR
+				break
+			case "NONE":
+				loglevelInt = network.NONE
+				break
+			default:
+				return
+			}
+			fmt.Printf("Log level set to %s\n", loglevel)
+			network.SetLogLevel(loglevelInt)
+			continue
 		}
+
 		network.SendToAll(network.CreatePacket("message", text))
 	}
 }
