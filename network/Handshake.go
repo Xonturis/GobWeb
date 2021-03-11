@@ -2,7 +2,6 @@ package network
 
 import (
 	"encoding/gob"
-	"log"
 	"net"
 	"strconv"
 	"strings"
@@ -120,7 +119,7 @@ func handleHereIsListPacket(helloPacket Packet, data HandshakeData) {
 			// gave us a list of pairs that are disconnected but not removed (not handled)
 			continue
 		}
-		log.Println("Sent hello to ", ipPort)
+		Info("Sent hello to ", ipPort)
 		newConn.Send(helloPacket)
 		AddToNetwork(newConn.GetConn())
 	}

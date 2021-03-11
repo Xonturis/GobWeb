@@ -6,10 +6,8 @@ import (
 	"encoding/gob"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"strconv"
-	"strings"
 	"unsafe"
 )
 
@@ -23,7 +21,6 @@ import (
 //
 type Connection struct {
 	netConn        net.Conn
-	listeningPort  int
 	readWriter     *bufio.ReadWriter
 	ipPortAddress  string
 }
@@ -32,8 +29,6 @@ type Connectable interface {
 	Send(Packet)
 	Listen()
 	GetConn() net.Conn
-	GetListeningPort() int
-	SetListeningPort(port int)
 	SetIpPortAddress(ipport string)
 	GetIpPortAddress() string
 }
@@ -51,21 +46,6 @@ func (c *Connection) GetIpPortAddress() string {
 // Fonction permettant de changer l'ip et le port.
 func (c *Connection) SetIpPortAddress(ipport string)  {
 	c.ipPortAddress = ipport
-}
-
-// Fonction permettant de récupérer le port d'écoute.
-func (c *Connection) GetListeningPort() int {
-	return c.listeningPort
-}
-
-// Fonction permettant de changer le port d'écoute.
-func (c *Connection) SetListeningPort(port int) {
-	c.listeningPort = port
-
-	remoteAddr := c.GetConn().RemoteAddr().String()
-	remoteAddr = strings.Split(remoteAddr, ":")[0]
-	remoteAddr = remoteAddr + ":" + strconv.Itoa(c.GetListeningPort())
-	c.ipPortAddress = remoteAddr
 }
 
 // Fonction permettant de récupérer readWriter.
@@ -114,27 +94,27 @@ func (c *Connection) Send(packet Packet) {
 	var err error
 	_, err = c.GetReadWriter().Write(IntToByteArray(int64(size))) // size
 	if err != nil {
-		log.Println(err)
+		Warning(err) // Not asked to handle that case
 		return
 	}
 	_, err = c.GetReadWriter().Write([]byte("\n"))                // \n
 	if err != nil {
-		log.Println(err)
+		Warning(err) // Not asked to handle that case
 		return
 	}
 	_, err = c.GetReadWriter().Write(packetBytes)                 // packet
 	if err != nil {
-		log.Println(err)
+		Warning(err) // Not asked to handle that case
 		return
 	}
 
 	err = c.GetReadWriter().Writer.Flush()
 	if err != nil {
-		log.Println(err)
+		Warning(err) // Not asked to handle that case
 		return
 	}
 
-	log.Println("|-->", packet)
+	Info("|-->", packet)
 }
 
 // Fonction encodant n'importe quoi en un tableau de byte.
@@ -146,7 +126,7 @@ func encodeToBytes(i interface{}) []byte {
 	err := enc.Encode(i)
 	if err != nil {
 		fmt.Println("Error with gob, try adding `gob.Register(YOUR_INTERFACE_HERE{})` before handling packets")
-		log.Println(err)
+		Error(err)
 	}
 	return buf.Bytes()
 }
@@ -160,7 +140,7 @@ func decodePacket(s []byte) Packet {
 	err := dec.Decode(&p)
 	if err != nil {
 		fmt.Println("Error with gob, try adding `gob.Register(YOUR_INTERFACE_HERE{})` before handling packets")
-		log.Println(err)
+		Error(err)
 	}
 	return p
 }
@@ -192,7 +172,7 @@ func (c *Connection) Listen() {
 		_, err = io.ReadFull(c.GetReadWriter().Reader, bapacket) // packet
 
 		if err != nil {
-			log.Println(err)
+			Warning(err) // Not asked to handle that case
 			return
 		}
 
@@ -207,7 +187,7 @@ func ConnectIP(ip net.IP, port int) *Connection {
 	conn, err := net.Dial("tcp", ip.String()+":"+strconv.Itoa(port))
 
 	if err != nil {
-		log.Println(err)
+		Error(err)// Deux cas : le premier pair où on se connecte est fermé ou l'un des pairs du réseau s'est déconnecté
 		return nil
 	}
 
@@ -222,7 +202,6 @@ func WrapConnection(conn net.Conn) *Connection {
 	var connectable *Connection
 	connectable = &Connection{
 		conn,
-		0,
 		bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn)),
 		conn.RemoteAddr().String(),
 	}

@@ -1,10 +1,9 @@
 package network
 
 import (
-	"log"
+	"fmt"
 	"net"
 	"strconv"
-	"strings"
 )
 
 //
@@ -34,6 +33,17 @@ var packetTypeHandlerMap = make(map[string]packetTypeHandler)
 // Fonction remplaçable étant appelée au lancement effectif du serveur
 var OnReady func()
 
+// Permet de récupérer la Connection correspondant à un couple ip:port
+func GetConnection(ipport string) (*Connection, error) {
+	for _, conn := range allCurrentConnectables {
+		if conn.ipPortAddress == ipport {
+			return conn, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no connection having the specified ip:port combinaison. (%s)", ipport)
+}
+
 // Retourne une collection de tous les couples ip:port correspondant
 // aux pairs connectés (ip) et quel port ils écoutent (port)
 // /!\  à différencier du couple ip:port qui peut parfois correspondre au couple où le client local est connecté
@@ -55,19 +65,19 @@ func accept(port int) {
 	var err error
 	listener, err = net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(port))
 	if err != nil {
-		log.Println(err)
+		Error(err)
 		return
 	}
-	log.Println("Listening to : " + listener.Addr().String())
+	Info("Listening to : " + listener.Addr().String())
 
 	selfServerAddress = "127.0.0.1"
 	selfServerPort = port
 
 	for {
 		conn, err := listener.Accept()
-		log.Println("New connection: ", conn.RemoteAddr().String())
+		Info("New connection: ", conn.RemoteAddr().String())
 		if err != nil {
-			log.Println(err)
+			Error(err)
 		}
 		AddToNetwork(conn)
 	}
@@ -87,7 +97,7 @@ func SendToAll(packet Packet) {
 //
 //  Packet  packet	packet entrant qui doit être traité
 func Handle(packet Packet) {
-	log.Println("|<-- ", packet)
+	Info("|<-- ", packet)
 	packetsChan <- packet
 }
 
@@ -108,7 +118,7 @@ func onReceive(packet Packet) {
 		packetTypeHandlerMap[packet.Ptype](packet)
 		return
 	} else {
-		log.Println("Received unhandled packet") // Dans le cas où on reçoit un packet qu'on ne sait pas traiter
+		Info("Received unhandled packet") // Dans le cas où on reçoit un packet qu'on ne sait pas traiter
 	}
 }
 
@@ -126,10 +136,7 @@ func RegisterHandler(packetType string, handler packetTypeHandler) {
 //
 //  net.Conn	conn la connexion qu'on veut wrapper et ajouter au réseau cobweb
 func AddToNetwork(conn net.Conn) {
-	split := strings.Split(conn.RemoteAddr().String(), ":")
-	port, _ := strconv.Atoi(split[1])
 	newConnectable := WrapConnection(conn)
-	newConnectable.SetListeningPort(port)
 	allCurrentConnectables = append(allCurrentConnectables, newConnectable)
 }
 
@@ -150,8 +157,8 @@ func ConnectCobweb(port int, ip net.IP, localport int) {
 func StartCobweb(port int) {
 	RegisterHandshakeHandler()
 	go handlePackets()
-	go accept(port)
 	callOnReady()
+	accept(port)
 }
 
 // Fonction qui appelle la méthode OnReady qui sera définie par l'application qui utilise le réseau cobweb
