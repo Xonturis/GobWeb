@@ -30,7 +30,7 @@ func LaunchNMSNNJ(ip net.IP, port int, localport int) {
 	}
 
 	if ip == nil {
-		go network.StartCobweb(port)
+		go network.StartCobweb(localport)
 	} else {
 		go network.ConnectCobweb(port, ip, localport)
 	}

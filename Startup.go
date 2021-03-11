@@ -26,6 +26,6 @@ func main() {
 		ip := net.ParseIP(*contactaddr)
 		LaunchNMSNNJ(ip, *contactport, *port)
 	} else {
-		LaunchNMSNNJ(nil, *port, 0)
+		LaunchNMSNNJ(nil, 0, *port)
 	}
 }
