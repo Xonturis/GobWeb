@@ -1,57 +1,31 @@
 package main
 
 import (
-	"fmt"
+	"flag"
 	"net"
-	"os"
-	"strconv"
-	"strings"
 )
 
 //Démarrage de l'application et du réseau.
 func main() {
-	args := os.Args[1:]
-	lenArgs := len(args)
+	port := flag.Int(
+		"port", 8080,
+		"Port sur lequel écouter")
+	isFirst := flag.Bool(
+		"first", false,
+		"Pour déclencher la création d'un nouveau réseau")
+	contactaddr := flag.String(
+		"contactaddr", "127.0.0.1",
+		"Adresse IP à contacter si le nouveau pair n'est pas le premier pair")
+	contactport := flag.Int(
+		"contactport", 8080,
+		"Port à contacter si le nouveau pair n'est pas le premier pair")
 
-	// Juste un port en param
-	if lenArgs >= 1 {
-		//get le port
-		port, err := strconv.Atoi(args[0])
-		if err == nil {
-			if lenArgs >= 2 {
-				ipPort := strings.Split(args[1], ":")
-				if len(ipPort) == 2 {
-					ip := net.ParseIP(ipPort[0])
-					port2, err := strconv.Atoi(ipPort[1])
-					if ip != nil && err == nil {
-						LaunchNMSNNJ(ip, port2, port)
-					} else {
-						fmt.Println("Erreur, l'adresse IP n'est pas valide")
-						fmt.Println("Syntaxe :")
-						fmt.Println("cobweb <port> [ip:port]")
-						os.Exit(3)
-					}
-				} else {
-					fmt.Println("Erreur, le format ip:port n'est pas respecté")
-					fmt.Println("Syntaxe :")
-					fmt.Println("cobweb <port> [ip:port]")
-					os.Exit(3)
-				}
-			} else {
-				LaunchNMSNNJ(nil, port, 0)
-			}
+	flag.Parse()
 
-		} else {
-			fmt.Println("Erreur, le port n'est pas valide")
-			fmt.Println("Syntaxe :")
-			fmt.Println("cobweb <port> [ip:port]")
-			os.Exit(2)
-		}
-
-		// Erreur, pas assez de params
+	if !(*isFirst) {
+		ip := net.ParseIP(*contactaddr)
+		LaunchNMSNNJ(ip, *contactport, *port)
 	} else {
-		fmt.Println("Syntaxe :")
-		fmt.Println("cobweb <port> [ip:port]")
-		os.Exit(1)
+		LaunchNMSNNJ(nil, *port, 0)
 	}
 }
