@@ -16,7 +16,7 @@ stages:
 compile:
   stage: build
   script:
-    - go build -o $CI_PROJECT_DIR/mybinary
+    - go build -o $CI_PROJECT_DIR/gobweb
   artifacts:
     paths:
-      - mybinary
+      - gobweb
